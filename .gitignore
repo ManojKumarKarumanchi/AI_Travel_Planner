@@ -8,7 +8,9 @@ __pycache__/
 .idea/
 .pytest_cache/
 .DS_Store
-db/
+.db
 .python-version
 logs.log
+.temp/
+temp/
 .claude/
