@@ -8,52 +8,178 @@ AI-powered travel assistant that takes user preferences and produces a complete 
 
 ## Architecture
 
-### System Components
+### System Architecture
 
-**Orchestrator (LangGraph StateGraph)**
-
-- Manages workflow: validate → research → plan → HITL pause → finalize
-- Routes work to specialized agents based on workflow stage
-- Handles state transitions and revision loops (max 3 revisions)
-- Persists state across HTTP requests via SqliteSaver checkpointer
-
-**Agent 1: Research Agent**
-
-- Gathers destination intelligence via web search and currency conversion
-- Tools:
-  1. **web_search_tool** (Serper API, mandatory) — Real-time Google search for attractions, safety, visa info, seasonal tips
-  2. **currency_converter_tool** (ExchangeRate-API, free tier) — Converts budget to local currency for purchasing power context
-- Output: ResearchOutput (Pydantic) with destination overview, attractions, safety notes, visa info, currency context, destination tier
-
-**Agent 2: Itinerary Planner Agent**
-
-- Constructs day-by-day plans using research output
-- Tools:
-  1. **budget_allocator** (pure Python) — Distributes budget across accommodation/food/activities/transport/contingency by destination tier
-  2. **packing_list_generator_tool** (pure Python) — Context-aware packing checklist based on weather, activities, duration
-- Output: ItineraryOutput (Pydantic) with daily plan, budget breakdown, packing list, cost validation
-
-**Human-in-the-Loop (HITL)**
-
-- Workflow pauses after draft itinerary generation using `langgraph.types.interrupt()`
-- User reviews via `POST /plan/{id}/review` with actions:
-  - **approve** — finalize and complete
-  - **reject** — re-run research + planning with feedback
-  - **modify** — re-run planner only with specific changes
-- State persists across pause via SqliteSaver (session_id = thread_id)
-
-### Graph Topology
-
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        UI[Streamlit UI]
+        API_CLIENT[API Client]
+    end
+    
+    subgraph "FastAPI Backend"
+        ROUTES[Plan Routes]
+        EXECUTOR[ThreadPoolExecutor]
+    end
+    
+    subgraph "LangGraph Orchestrator"
+        WORKFLOW[StateGraph Workflow]
+        CHECKPOINTER[(SqliteSaver<br/>State Persistence)]
+    end
+    
+    subgraph "Agents"
+        RESEARCH[Research Agent]
+        PLANNER[Planner Agent]
+    end
+    
+    subgraph "External Tools"
+        SERPER[Serper API<br/>Web Search]
+        EXCHANGE[ExchangeRate API<br/>Currency]
+        BUDGET[Budget Allocator<br/>Pure Python]
+        PACKING[Packing List<br/>Pure Python]
+    end
+    
+    UI --> ROUTES
+    API_CLIENT --> ROUTES
+    ROUTES --> EXECUTOR
+    EXECUTOR --> WORKFLOW
+    WORKFLOW <--> CHECKPOINTER
+    
+    WORKFLOW --> RESEARCH
+    WORKFLOW --> PLANNER
+    
+    RESEARCH --> SERPER
+    RESEARCH --> EXCHANGE
+    PLANNER --> BUDGET
+    PLANNER --> PACKING
+    
+    style WORKFLOW fill:#4a90e2
+    style CHECKPOINTER fill:#f39c12
+    style RESEARCH fill:#27ae60
+    style PLANNER fill:#27ae60
 ```
-START → validate
-  ├─[error]→ error → END
-  └─[ok]──→ research
-              → planner
-                  → hitl (interrupt pause)
-                      → [revision_router]
-                          ├─ "finalize"  → finalize → END
-                          ├─ "planner"   → increment_revision → planner (loop)
-                          └─ "research"  → increment_revision → research (loop)
+
+### Workflow State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> validating
+    
+    validating --> researching: valid request
+    validating --> error: invalid input
+    
+    researching --> planning: research complete
+    researching --> error: all models failed
+    
+    planning --> awaiting_review: draft ready
+    planning --> error: all models failed
+    
+    awaiting_review --> finalizing: approve
+    awaiting_review --> researching: reject + feedback
+    awaiting_review --> planning: modify + changes
+    
+    finalizing --> complete: saved
+    
+    error --> [*]
+    complete --> [*]
+    
+    note right of awaiting_review
+        HITL Pause (interrupt)
+        State persists to SQLite
+        Resume via Command(resume)
+    end note
+```
+
+### HITL Pause & Resume Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as FastAPI
+    participant Graph as LangGraph
+    participant DB as SqliteSaver
+    
+    rect rgb(240, 248, 255)
+        Note over Client,DB: Phase 1: Create Plan & Pause
+        Client->>+API: POST /plan {destination, dates, budget}
+        API->>+Graph: invoke(request, thread_id)
+        Graph->>Graph: validate → research → plan
+        Graph->>DB: save_state(awaiting_review)
+        Graph->>Graph: interrupt()
+        Graph-->>-API: awaiting_review
+        API-->>-Client: {session_id, draft_itinerary}
+    end
+    
+    rect rgb(255, 250, 240)
+        Note over Client,DB: Phase 2: Query Status (Optional)
+        Client->>+API: GET /plan/abc123
+        API->>+DB: get_state(abc123)
+        DB-->>-API: TravelPlanState
+        API-->>-Client: {status, draft}
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over Client,DB: Phase 3: Review & Resume
+        Client->>+API: POST /plan/abc123/review {action: approve}
+        API->>+Graph: invoke(Command(resume=feedback))
+        Graph->>+DB: load_state(abc123)
+        DB-->>-Graph: TravelPlanState
+        Graph->>Graph: finalize
+        Graph->>DB: save_state(complete)
+        Graph-->>-API: complete
+        API-->>-Client: {final_plan}
+    end
+    
+    Note over DB: State persists across server restarts
+```
+
+### Component Interaction
+
+```mermaid
+graph LR
+    subgraph "Research Node"
+        R1[Validate Input]
+        R2[Web Search<br/>Serper API]
+        R3[Currency Conversion<br/>ExchangeRate API]
+        R4[Structured Output<br/>ResearchOutput]
+    end
+    
+    subgraph "Planning Node"
+        P1[Load Research]
+        P2[Budget Allocation<br/>Tier-based]
+        P3[Packing List<br/>Weather-aware]
+        P4[Itinerary Generation<br/>ItineraryOutput]
+    end
+    
+    subgraph "HITL Node"
+        H1{Review Action}
+        H2[Approve]
+        H3[Reject]
+        H4[Modify]
+    end
+    
+    R1 --> R2
+    R2 --> R3
+    R3 --> R4
+    R4 --> P1
+    
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> H1
+    
+    H1 -->|approve| H2
+    H1 -->|reject| H3
+    H1 -->|modify| H4
+    
+    H2 --> FINALIZE[Finalize & Save]
+    H3 --> R1
+    H4 --> P1
+    
+    style R4 fill:#27ae60
+    style P4 fill:#27ae60
+    style H1 fill:#f39c12
+    style FINALIZE fill:#4a90e2
 ```
 
 ## Tools
@@ -77,7 +203,7 @@ START → validate
 ### Prerequisites
 
 - Python 3.12+
-- API keys: SERPER_API_KEY (serper.dev), EXCHANGERATE_API_KEY (exchangerate-api.com), OPENAI_API_KEY
+- API keys: SERPER_API_KEY (serper.dev), EXCHANGERATE_API_KEY (exchangerate-api.com), NVIDIA_API_KEY
 
 ### Installation
 
@@ -95,11 +221,6 @@ pip install -r requirements.txt
 
 # Set API keys
 cp .env.example .env
-# Edit .env with your keys:
-#   SERPER_API_KEY=<your-key>
-#   EXCHANGERATE_API_KEY=<your-key>
-#   OPENAI_API_KEY=<your-key>
-#   LLM_MODEL=gpt-4o-mini  # or gpt-4o for better quality
 ```
 
 ### Run Application
