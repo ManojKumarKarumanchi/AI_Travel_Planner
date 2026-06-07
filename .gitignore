@@ -1,0 +1,42 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+.pytest_cache/
+.DS_Store
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+.db
+
+# Logs (app/logs/)
+app/logs/*.log
+logs.log
+
+# Generated artifacts
+app/flow/*.png
+app/flow/*.txt
+app/flow/meta_*.json
+sessions/
+*.tmp
+
+# Temporary
+.temp/
+temp/
+.claude/
+claude.md
+goal.txt

@@ -1,0 +1,46 @@
+# Core dependencies
+python-dateutil
+pytz
+requests
+beautifulsoup4
+python-dotenv
+
+# LangChain ecosystem
+langchain
+langchain-core
+langchain-nvidia-ai-endpoints
+langgraph
+langgraph-checkpoint
+langgraph-checkpoint-sqlite
+langsmith
+
+# FastAPI
+fastapi[standard]
+uvicorn[standard]
+gunicorn
+httpx
+
+# Database
+sqlalchemy>=2.0.0
+aiosqlite
+
+# Data validation
+pydantic>=2.0.0
+
+# Security
+cryptography
+pyjwt
+passlib
+bcrypt
+python-jose[cryptography]
+
+# Utilities
+tiktoken
+
+# Streamlit UI
+streamlit
+sseclient-py
+
+# Optional: Graph visualization (requires native Graphviz install on Windows)
+# pygraphviz
+# graphviz
