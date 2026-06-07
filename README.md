@@ -6,19 +6,19 @@ Multi-agent travel planning system with human-in-the-loop approval, built with L
 
 AI-powered travel assistant that takes user preferences and produces a complete trip plan through a multi-agent workflow. Features pause-and-resume HITL approval across HTTP requests using LangGraph's SqliteSaver checkpointer.
 
-**Assignment:** Express Analytics Take-Home for AI/ML Engineer role.
-
 ## Architecture
 
 ### System Components
 
 **Orchestrator (LangGraph StateGraph)**
+
 - Manages workflow: validate → research → plan → HITL pause → finalize
 - Routes work to specialized agents based on workflow stage
 - Handles state transitions and revision loops (max 3 revisions)
 - Persists state across HTTP requests via SqliteSaver checkpointer
 
 **Agent 1: Research Agent**
+
 - Gathers destination intelligence via web search and currency conversion
 - Tools:
   1. **web_search_tool** (Serper API, mandatory) — Real-time Google search for attractions, safety, visa info, seasonal tips
@@ -26,6 +26,7 @@ AI-powered travel assistant that takes user preferences and produces a complete 
 - Output: ResearchOutput (Pydantic) with destination overview, attractions, safety notes, visa info, currency context, destination tier
 
 **Agent 2: Itinerary Planner Agent**
+
 - Constructs day-by-day plans using research output
 - Tools:
   1. **budget_allocator** (pure Python) — Distributes budget across accommodation/food/activities/transport/contingency by destination tier
@@ -33,6 +34,7 @@ AI-powered travel assistant that takes user preferences and produces a complete 
 - Output: ItineraryOutput (Pydantic) with daily plan, budget breakdown, packing list, cost validation
 
 **Human-in-the-Loop (HITL)**
+
 - Workflow pauses after draft itinerary generation using `langgraph.types.interrupt()`
 - User reviews via `POST /plan/{id}/review` with actions:
   - **approve** — finalize and complete
@@ -73,7 +75,8 @@ START → validate
 ## Setup
 
 ### Prerequisites
-- Python 3.10+
+
+- Python 3.12+
 - API keys: SERPER_API_KEY (serper.dev), EXCHANGERATE_API_KEY (exchangerate-api.com), OPENAI_API_KEY
 
 ### Installation
@@ -122,37 +125,20 @@ streamlit run ui.py
 ```
 
 Navigate to:
-- **Streamlit UI:** http://localhost:8501 (beautiful dark theme interface)
-- **FastAPI Docs:** http://localhost:8000/docs (interactive API documentation)
 
-### Streamlit UI Features
-
-The `ui.py` provides a production-ready web interface with:
-
-- 🎨 **Dark Theme:** Professional dark mode by default
-- 🔄 **Real-Time Streaming:** Watch agents think and work in real-time via SSE
-- 🤖 **Agent Activity Log:** See tool calls, LLM thoughts, and workflow transitions
-- ⏸️ **HITL Controls:** Approve, reject, or modify plans with interactive forms
-- 📋 **Beautiful Itinerary Display:** Expandable daily plans with activities, costs, and tips
-- 💾 **Session Management:** Resume previous sessions or start fresh
-- 📊 **Live Status Updates:** Track workflow progress (researching → planning → review → complete)
-- 📥 **Download Plans:** Export finalized plans as JSON
-
-**UI Screenshot Flow:**
-1. Enter destination, dates, budget, interests → Submit
-2. Watch real-time agent activity stream (tool calls, thoughts, results)
-3. Review draft itinerary when agents pause for HITL
-4. Approve/modify/reject with comments
-5. Download final plan or start new session
+- **Streamlit UI:** <http://localhost:8501> (beautiful dark theme interface)
+- **FastAPI Docs:** <http://localhost:8000/docs> (interactive API documentation)
 
 ## API Endpoints
 
 Base URL: `http://localhost:8000`
 
 ### `POST /plan`
+
 Submit new travel request. Returns session_id for tracking.
 
 **Request:**
+
 ```json
 {
   "destination": "Tokyo",
@@ -165,6 +151,7 @@ Submit new travel request. Returns session_id for tracking.
 ```
 
 **Response:**
+
 ```json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -174,9 +161,11 @@ Submit new travel request. Returns session_id for tracking.
 ```
 
 ### `GET /plan/{session_id}`
+
 Get current plan status and draft itinerary (if available).
 
 **Response (researching):**
+
 ```json
 {
   "session_id": "...",
@@ -187,6 +176,7 @@ Get current plan status and draft itinerary (if available).
 ```
 
 **Response (awaiting_review):**
+
 ```json
 {
   "session_id": "...",
@@ -238,9 +228,11 @@ Get current plan status and draft itinerary (if available).
 ```
 
 ### `POST /plan/{session_id}/review`
+
 Submit HITL feedback after reviewing draft itinerary.
 
 **Request (approve):**
+
 ```json
 {
   "action": "approve",
@@ -249,6 +241,7 @@ Submit HITL feedback after reviewing draft itinerary.
 ```
 
 **Request (reject):**
+
 ```json
 {
   "action": "reject",
@@ -257,6 +250,7 @@ Submit HITL feedback after reviewing draft itinerary.
 ```
 
 **Request (modify):**
+
 ```json
 {
   "action": "modify",
@@ -273,6 +267,7 @@ Submit HITL feedback after reviewing draft itinerary.
 ```
 
 **Response:**
+
 ```json
 {
   "session_id": "...",
@@ -282,9 +277,11 @@ Submit HITL feedback after reviewing draft itinerary.
 ```
 
 ### `GET /plan/{session_id}/final`
+
 Retrieve finalized plan (only after approval).
 
 **Response:**
+
 ```json
 {
   "session_id": "...",
@@ -304,10 +301,12 @@ Retrieve finalized plan (only after approval).
 ### Why these 4 tools?
 
 **Research Agent:**
+
 - **Serper over Exa:** 2,500 free queries, simpler REST API, returns organic Google results (no neural search ambiguity)
 - **Currency converter:** Directly relevant to budget planning. Every good repo in the wild uses this. Shows systems thinking — budget context matters for international travel.
 
 **Planner Agent:**
+
 - **Budget allocator over flight/hotel APIs:** Zero external dependency = zero failure mode during demo. Pure logic that evaluates immediately understand. Shows cost-tier awareness (budget/mid/luxury).
 - **Packing list over restaurant recommender:** Assignment explicitly mentions it as example. Context-aware (weather + activities) adds real user value. No API rate limits.
 
@@ -331,33 +330,37 @@ LangGraph docs pattern. Pydantic schemas (ResearchOutput, ItineraryOutput) enfor
 | Web search for attractions vs. POI database | Real-time, destination-agnostic | API cost, rate limits |
 | SqliteSaver checkpointer | Simple local setup | Not production-ready (use PostgresCheckpointer in prod) |
 | Max 3 revisions | Prevents infinite loops | User might need to start new session |
-| gpt-4o-mini default | Fast, cheap ($0.15/1M tokens) | Lower quality than gpt-4o — tune via LLM_MODEL env var |
 
 ## Production Improvements (Given More Time)
 
 **Infrastructure:**
+
 - Swap SqliteSaver → PostgresCheckpointer for multi-instance deployments
 - Add Redis cache for Serper results (reduce API calls on revisions)
 - Rate limiting on `/plan` endpoint (prevent API key exhaustion)
 - Structured logging (JSON) with request_id tracing
 
 **Tool Enhancements:**
+
 - Replace mock weather in packing_list_generator with OpenWeatherMap forecast API
 - Add Google Places API for real POI data (costs, hours, reviews)
 - Flight/hotel price estimation via Amadeus API (requires paid tier)
 
 **Agent Improvements:**
+
 - Multi-model strategy: gpt-4o for research (quality), gpt-4o-mini for planning (speed)
 - Retry logic with exponential backoff on API failures
 - Parallel tool execution (call web_search + currency_converter simultaneously)
 
 **User Experience:**
+
 - Streaming progress updates via Server-Sent Events (`GET /plan/{id}/stream`)
 - Itinerary visualization (map with pins, timeline view)
 - Export to PDF/Google Calendar
 - Multi-destination support (Tokyo → Kyoto → Osaka in one plan)
 
 **Testing:**
+
 - Unit tests for tools (mock Serper/ExchangeRate responses)
 - Integration tests for full workflow (validate → research → plan → HITL → finalize)
 - Load testing (concurrent sessions, checkpointer contention)
@@ -368,9 +371,3 @@ LangGraph docs pattern. Pydantic schemas (ResearchOutput, ItineraryOutput) enfor
 - [Serper API](https://serper.dev)
 - [ExchangeRate-API](https://www.exchangerate-api.com)
 - [FastAPI Documentation](https://fastapi.tiangolo.com)
-
----
-
-**Author:** Manoj Kumar Karumanchi  
-**Assignment:** Express Analytics AI/ML Engineer Take-Home  
-**Date:** June 2026ggraph>
