@@ -1,4 +1,4 @@
-# AI Travel Planner
+# AI Travel Planner [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ManojKumarKarumanchi/AI_Travel_Planner)
 
 Multi-agent travel planning system with human-in-the-loop approval, built with LangGraph and FastAPI.
 
